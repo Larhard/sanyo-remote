@@ -69,11 +69,11 @@ class RemoteGUI:
 
         ("4:3",              b"C0F"),
         ("16:9",             b"C10"),
-        ("Keystone ↑",   b"C8E"),
+        ("Keystone ↑",       b"C8E"),
 
         ("Freeze on",        b"C43"),
         ("Freeze off",       b"C44"),
-        ("Keystone ↓",   b"C8F"),
+        ("Keystone ↓",       b"C8F"),
 
         ("D. Zoom +",        b"C30"),
         ("D. Zoom -",        b"C31"),
