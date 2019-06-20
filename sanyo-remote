@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+
+import time
+import serial
+import tkinter
+import io
+from functools import partial
+
+class RemoteGUI:
+    port = "/dev/ttyUSB0"
+    baudrate = 19200
+
+    buttons_config = [
+        ("Power on",         b"C00"),
+        None,
+        ("Power off",        b"C02"),
+
+        None,
+        None,
+        None,
+
+        None,
+        ("Menu on",          b"C1C"),
+        ("Menu off",         b"C1D"),
+
+        None,
+        None,
+        None,
+
+        None,
+        ("Up",               b"C3C"),
+        None,
+
+        ("Left",             b"C3B"),
+        ("Enter",            b"C3F"),
+        ("Right",            b"C3A"),
+
+        None,
+        ("Down",             b"C3D"),
+        None,
+
+        None,
+        None,
+        None,
+
+        ("Computer 1",       b"C05"),
+        ("Computer 1",       b"C06"),
+        ("Video",            b"C07"),
+
+        None,
+        None,
+        None,
+
+        ("Standard",         b"C11"),
+        ("Real",             b"C12"),
+        ("Cinema",           b"C13"),
+
+        ("Dynamic",          b"C19"),
+        ("Image 1",          b"C14"),
+        ("Image 2",          b"C15"),
+
+        None,
+        ("Image 3",          b"C16"),
+        ("Image 4",          b"C17"),
+
+        None,
+        None,
+        None,
+
+        ("4:3",              b"C0F"),
+        ("16:9",             b"C10"),
+        ("Keystone ↑",   b"C8E"),
+
+        ("Freeze on",        b"C43"),
+        ("Freeze off",       b"C44"),
+        ("Keystone ↓",   b"C8F"),
+
+        ("D. Zoom +",        b"C30"),
+        ("D. Zoom -",        b"C31"),
+        ("Timer",            b"C8A"),
+
+        None,
+        None,
+        None,
+
+        ("Status",           b"CR0"),
+        ("Input mode",       b"CR1"),
+        ("Lamp Time",        b"CR3"),
+        ("Setting",          b"CR4"),
+        ("Temperature",      b"CR6"),
+    ]
+
+
+    def translate_result(self, result, code):
+        result = result.strip()
+
+        if code == b"CR0":
+            if result == b"00": return "Power ON"
+            if result == b"80": return "Standby"
+            if result == b"40": return "Countdown in process"
+            if result == b"20": return "Cooling Down in process"
+            if result == b"10": return "Power Failure"
+            if result == b"28": return "Cooling Down due to Abnormal Temperature in process"
+            if result == b"02": return "Cannot accept RS-232C Command"
+            if result == b"24": return "Power Management Cooling Down in process"
+            if result == b"04": return "Power Management status"
+            if result == b"21": return "Cooling Down in process after Off due to lamp failure"
+            if result == b"81": return "Standby after Cooling Down due to lamp failure"
+            if result == b"88": return "Standby after Cooling Down due to Abnormal Temperature"
+            if result == b"2C": return "Cooling Down in process after Power Off due to Shutter management"
+            if result == b"8C": return "Standby after Cooling Down due to Shutter management"
+
+        if code == b"CR4":
+            if result == b"11": return "Normal Screen Setting"
+            if result == b"10": return "Picture is top/bottom reversed (Status: Rear & Ceiling ON)"
+            if result == b"01": return "Picture is left/right reversed (Status: Rear ON)"
+            if result == b"00": return "Picture is top/bottom and left/right reversed (Status: Ceiling ON)"
+
+        if result == b"\x06":
+            return "OK"
+
+        if result == b"?":
+            return "Unacceptable"
+
+        return result
+
+
+    def send(self, code):
+        connection = serial.Serial(
+            port      = self.port,
+            baudrate  = self.baudrate,
+            timeout   = 1,
+        )
+
+        if not connection.isOpen():
+            connection.open()
+
+        connection.write(code + b"\r")
+        result = connection.read_until(b"\r")
+
+        result = self.translate_result(result, code)
+
+        connection.close()
+
+        return result
+
+
+    def button_callback(self, code):
+        try:
+            self.output_label["text"] = "{} ->".format(code)
+            result = self.send(code)
+            self.output_label["text"] = "{} -> {}".format(code, result)
+        except Exception as e:
+            self.output_label["text"] = "{} -> {}".format(code, e)
+
+
+    def key_callback(self, event):
+        if event.keysym == "Up":      self.button_callback(b"C3C")
+        if event.keysym == "Down":    self.button_callback(b"C3D")
+        if event.keysym == "Left":    self.button_callback(b"C3B")
+        if event.keysym == "Right":   self.button_callback(b"C3A")
+        if event.keysym == "Return":  self.button_callback(b"C3F")
+        if event.keysym == "m":       self.button_callback(b"C1C")
+        if event.keysym == "Escape":  self.button_callback(b"C1D")
+
+
+    def on_update(self):
+        try:
+            status_result = self.send(b"CR0")
+            temperature_result = self.send(b"CR6")
+
+            self.status_label["text"] = status_result
+            self.temperature_label["text"] = temperature_result
+        except Exception as e:
+            self.status_label["text"] = str(e)
+            self.temperature_label["text"] = "---"
+
+        self.window.after(1000, self.on_update)
+
+
+    def __init__(self):
+        self.window = tkinter.Tk(className="Sanyo_remote")
+        self.window.title("Sanyo remote")
+
+        self.output_label = tkinter.Label(self.window, text="---", wraplength=200)
+        self.output_label.grid(columnspan=3)
+
+        for idx, spec in enumerate(self.buttons_config):
+            x = idx % 3
+            y = idx // 3 + 1
+
+            if spec is not None:
+                label, code = spec
+
+                tkinter.Button(self.window, text=label, command=partial(self.button_callback, code)).grid(row=y, column=x)
+            else:
+                tkinter.Label(self.window).grid(row=y, column=x)
+
+        self.status_label = tkinter.Label(self.window, wraplength=200)
+        self.status_label.grid(row=y+1, columnspan=3)
+
+        self.temperature_label = tkinter.Label(self.window, wraplength=200)
+        self.temperature_label.grid(row=y+2, columnspan=3)
+
+        self.window.bind("<Key>", self.key_callback)
+
+
+    def start(self):
+        self.on_update()
+        self.window.mainloop()
+
+if __name__ == "__main__":
+    remote = RemoteGUI()
+    remote.start()
