@@ -7,7 +7,7 @@ import io
 from functools import partial
 
 class RemoteGUI:
-    port = "/dev/ttyUSB0"
+    default_port = "/dev/ttyUSB0"
     baudrate = 19200
 
     buttons_config = [
@@ -127,7 +127,7 @@ class RemoteGUI:
 
     def send(self, code):
         connection = serial.Serial(
-            port      = self.port,
+            port      = self.port_entry.get(),
             baudrate  = self.baudrate,
             timeout   = 1,
         )
@@ -203,6 +203,11 @@ class RemoteGUI:
         self.temperature_label.grid(row=y+2, columnspan=3)
 
         self.window.bind("<Key>", self.key_callback)
+
+        tkinter.Label(self.window, text="port:").grid(row=y+3, column=0, sticky=tkinter.E)
+        self.port_entry = tkinter.Entry(self.window)
+        self.port_entry.insert(0, self.default_port)
+        self.port_entry.grid(row=y+3, column=1, columnspan=2, sticky=tkinter.E+tkinter.W)
 
 
     def start(self):
