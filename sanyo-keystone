@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+
+import numpy as np
+import subprocess
+import serial
+import time
+import argparse
+
+port = "/dev/ttyUSB0"
+baudrate = 19200
+
+def send(code):
+    connection = serial.Serial(
+        port      = port,
+        baudrate  = baudrate,
+        timeout   = 1,
+    )
+
+    if not connection.isOpen():
+        connection.open()
+
+    connection.write(code + b"\r")
+    result = connection.read_until(b"\r")
+
+    connection.close()
+
+    return result
+
+def set_projector_keystone(n):
+    for _ in range(74):
+        while send(b"C8F") != b"\x06\r":
+            time.sleep(0.1)
+
+    for _ in range(n + 37):
+        while send(b"C8E") != b"\x06\r":
+            time.sleep(0.1)
+
+def rotation_matrix(x=0, y=0, z=0):
+    result = np.eye(3)
+    result = np.dot(result, [[1, 0, 0],
+                            [0, np.cos(x), -np.sin(x)],
+                            [0, np.sin(x), np.cos(x)]])
+
+    result = np.dot(result, [[np.cos(y), 0, np.sin(y)],
+                            [0, 1, 0],
+                            [-np.sin(y), 0, np.cos(y)]])
+
+    result = np.dot(result, [[np.cos(z), -np.sin(z), 0],
+                            [np.sin(z), np.cos(z), 0],
+                            [0, 0, 1]])
+
+    return result
+
+def translation_matrix(x=0, y=0):
+    return np.array([[1, 0, x],
+                     [0, 1, y],
+                     [0, 0, 1]])
+
+def scale_matrix(x=1, y=1):
+    return np.array([[x, 0, 0],
+                     [0, y, 0],
+                     [0, 0, 1]])
+
+def setup_xrandr_keystone():
+    set_projector_keystone(0)
+
+    matrix = np.eye(3)
+    transform_params = ",".join(str(x) for x in matrix.reshape(-1))
+    subprocess.call(["xrandr", "--output", "HDMI1", "--transform", transform_params, "--mode", "1024x768", "--output", "eDP1", "--off"])
+
+    width = 1024
+    height = 768
+    angle = 0.00019
+    final_width = 1024 * 1.3
+    final_height = 768 * 1.3
+
+    matrix = np.eye(3)
+    matrix = np.dot(matrix, translation_matrix(0, 167))
+    matrix = np.dot(matrix, translation_matrix(final_width/2, final_height/2))
+    matrix = np.dot(matrix, rotation_matrix(angle, 0, 0))
+    matrix = np.dot(matrix, scale_matrix(1.09, 1.22))
+    matrix = np.dot(matrix, scale_matrix(0.983, 0.983))
+    matrix = np.dot(matrix, scale_matrix(1.295, 1.295))
+    matrix = np.dot(matrix, translation_matrix(-width/2, -height/2))
+
+    print(matrix)
+
+    transform_params = ",".join(str(x) for x in matrix.reshape(-1))
+    subprocess.call(["xrandr", "--output", "HDMI1", "--transform", transform_params, "--mode", "1024x768", "--fb", "{}x{}".format(int(final_width), int(final_height)), "--panning", "{}x{}".format(int(final_width), int(final_height))])
+
+    subprocess.call(["xrandr"])
+
+def setup_projector_keystone():
+    set_projector_keystone(20)
+
+    matrix = np.eye(3)
+    transform_params = ",".join(str(x) for x in matrix.reshape(-1))
+    subprocess.call(["xrandr", "--output", "HDMI1", "--transform", transform_params, "--mode", "1024x768", "--panning", "1024x768", "--fb", "1024x768", "--output", "eDP1", "--off"])
+
+def main(args=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", choices=["projector", "xrandr"])
+    options = parser.parse_args(args)
+
+    if options.mode == "xrandr":
+        setup_xrandr_keystone()
+    elif options.mode == "projector":
+        setup_projector_keystone()
+    else:
+        raise ValueError("Unknown mode defined: {}".format(options.mode))
+
+if __name__ == "__main__":
+    main()
